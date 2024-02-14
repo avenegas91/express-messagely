@@ -1,3 +1,14 @@
+const express = require('express');
+const router = new express.Router();
+const ExpressError = require('../expressError');
+const User = require('../models/user');
+const jwt = require("jsonwebtoken");
+const {SECRET_KEY, DB_URI} = require('../config');
+const Message = require('../models/message');
+const { authenticateJWT, ensureLoggedIn, ensureCorrectUser } = require('../middleware/auth')
+
+router.use(authenticateJWT);
+
 /** GET /:id - get detail of message.
  *
  * => {message: {id,
@@ -11,6 +22,20 @@
  *
  **/
 
+router.get('/:id', async (req, res, next) => {
+    try{
+        const id = req.params.id
+        const message = await Message.get(id)
+        if (message.from_user === req.user || message.to_user === req.user){
+            return res.json({message})
+        } else {
+            throw new ExpressError("Can only read your own messages")
+        }
+    }
+    catch(e){
+        return next(e)
+    }
+})
 
 /** POST / - post message.
  *
@@ -19,6 +44,17 @@
  *
  **/
 
+router.post('/', ensureLoggedIn, async (req, res, next) => {
+    try{
+        const {to_username, body} = req.body
+        const from_username = req.user.username
+        const message = await Message.create({from_username, to_username, body})
+        return res.json(message)
+    }
+    catch(e){
+        return next(e)
+    }
+})
 
 /** POST/:id/read - mark message as read:
  *
@@ -28,3 +64,21 @@
  *
  **/
 
+router.post('/:id/read', async (req, res, next) => {
+    try{
+        const id = req.params.id
+        const message = await Message.get(id)
+        if (message.to_user !== req.user.username){
+            throw new ExpressError("Only intended recipient can mark message read")
+        }
+        const read = await Message.markRead(id)
+        return res.json(read)
+    }
+    catch(e){
+        return next(e)
+    }
+})
+
+
+
+module.exports = router
